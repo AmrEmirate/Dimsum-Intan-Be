@@ -1,0 +1,150 @@
+import { Response } from 'express';
+import { prisma } from '../config/database';
+import { AuthRequest } from '../middlewares/auth';
+import { InvoiceStatus } from '@prisma/client';
+
+export const getInvoices = async (req: AuthRequest, res: Response) => {
+  try {
+    const { outletId } = req.query;
+
+    const whereClause: any = {};
+    if (outletId && outletId !== 'all') {
+      whereClause.outletId = String(outletId);
+    }
+
+    const invoices = await prisma.factoryInvoice.findMany({
+      where: whereClause,
+      include: {
+        items: true,
+        outlet: { select: { name: true } },
+      },
+      orderBy: { issueDate: 'desc' },
+    });
+
+    const formatted = invoices.map((inv) => ({
+      id: inv.id,
+      invoiceNumber: inv.invoiceNumber,
+      supplierName: inv.supplierName,
+      outletId: inv.outletId,
+      outletName: inv.outlet?.name || 'Outlet',
+      issueDate: inv.issueDate.toISOString().slice(0, 10),
+      dueDate: inv.dueDate.toISOString().slice(0, 10),
+      totalAmount: Number(inv.totalAmount),
+      status: inv.status,
+      bankAccount: inv.bankAccount,
+      paidAt: inv.paidAt ? inv.paidAt.toISOString().slice(0, 10) : undefined,
+      proofImageUrl: inv.proofImageUrl || undefined,
+      items: inv.items.map((it) => ({
+        itemName: it.itemName,
+        quantity: it.quantity,
+        unit: it.unit,
+        unitCost: Number(it.unitCost),
+        total: Number(it.total),
+      })),
+    }));
+
+    res.json({ success: true, data: formatted });
+  } catch (error: any) {
+    console.error('[Invoice Error]', error);
+    res.status(500).json({ success: false, message: error.message || 'Gagal memuat faktur tagihan pabrik' });
+  }
+};
+
+export const createInvoice = async (req: AuthRequest, res: Response) => {
+  try {
+    const { supplierName, outletId, issueDate, dueDate, totalAmount, bankAccount, items } = req.body;
+
+    let targetOutletId = outletId;
+    if (!targetOutletId || targetOutletId === 'all') {
+      const firstOutlet = await prisma.outlet.findFirst();
+      targetOutletId = firstOutlet ? firstOutlet.id : 'du';
+    }
+
+    const count = await prisma.factoryInvoice.count();
+    const invoiceNumber = `INV-PBR-${new Date().toISOString().slice(0, 7)}-${String(count + 1).padStart(2, '0')}`;
+
+    const created = await prisma.factoryInvoice.create({
+      data: {
+        invoiceNumber,
+        supplierName: supplierName || 'PT Dimsum Prima Rasa (Pusat)',
+        outletId: targetOutletId,
+        issueDate: new Date(issueDate || Date.now()),
+        dueDate: new Date(dueDate || Date.now() + 10 * 24 * 60 * 60 * 1000),
+        totalAmount: totalAmount,
+        bankAccount: bankAccount || 'BCA 7788-990-112 a.n PT Dimsum Prima Rasa',
+        status: InvoiceStatus.BELUM_LUNAS,
+        items: {
+          create: (items || []).map((it: any) => ({
+            itemName: it.itemName,
+            quantity: it.quantity,
+            unit: it.unit || 'Pouch',
+            unitCost: it.unitCost,
+            total: it.total,
+          })),
+        },
+      },
+      include: {
+        items: true,
+        outlet: { select: { name: true } },
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Faktur tagihan pabrik ${created.invoiceNumber} berhasil dicatat`,
+      data: {
+        ...created,
+        totalAmount: Number(created.totalAmount),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal membuat tagihan pabrik' });
+  }
+};
+
+export const payInvoice = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { proofImageUrl } = req.body;
+
+    const updated = await prisma.factoryInvoice.update({
+      where: { id },
+      data: {
+        status: InvoiceStatus.LUNAS,
+        paidAt: new Date(),
+        proofImageUrl: proofImageUrl || 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=500&auto=format&fit=crop&q=80',
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `Faktur ${updated.invoiceNumber} berhasil ditandai LUNAS`,
+      data: updated,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal memproses pembayaran faktur' });
+  }
+};
+
+export const deleteInvoice = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    const existing = await prisma.factoryInvoice.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Faktur tagihan pabrik tidak ditemukan' });
+    }
+
+    await prisma.factoryInvoice.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: `Faktur tagihan ${existing.invoiceNumber} berhasil dihapus dari sistem`,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal menghapus tagihan pabrik' });
+  }
+};
+

@@ -1,0 +1,246 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  OWNER
+  SUPERVISOR
+  KASIR
+}
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+}
+
+enum PaymentMethod {
+  CASH
+  QRIS
+}
+
+enum OrderStatus {
+  PAID
+  VOIDED
+}
+
+enum ShiftStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum PettyCashCategory {
+  ES_BATU
+  GALON_AIR
+  PLASTIK_KEMASAN
+  KEBERSIHAN
+  LAINNYA
+}
+
+enum PettyCashStatus {
+  MENUNGGU_VERIFIKASI
+  DISETUJUI
+  DITOLAK
+}
+
+enum InvoiceStatus {
+  LUNAS
+  BELUM_LUNAS
+  JATUH_TEMPO
+}
+
+enum FixedExpenseCategory {
+  SEWA_LAPAK
+  PAYROLL_GAJI
+  LISTRIK
+  AIR
+  INTERNET_POS
+}
+
+enum ExpenseStatus {
+  LUNAS
+  TERJADWAL
+}
+
+model Outlet {
+  id               String            @id @default(uuid())
+  code             String            @unique
+  name             String
+  city             String
+  address          String
+  phone            String
+  targetDailySales Decimal           @db.Decimal(12, 2)
+  users            User[]
+  orders           Order[]
+  shifts           ShiftSession[]
+  pettyCash        PettyCash[]
+  factoryInvoices  FactoryInvoice[]
+  fixedExpenses    FixedExpense[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model User {
+  id               String            @id @default(uuid())
+  name             String
+  username         String            @unique
+  passwordHash     String
+  pinHash          String?           // Digunakan oleh Supervisor & Owner untuk otorisasi void & delete
+  role             Role
+  outletId         String?
+  outlet           Outlet?           @relation(fields: [outletId], references: [id])
+  shifts           ShiftSession[]
+  ordersProcessed  Order[]           @relation("CashierOrders")
+  ordersVoided     Order[]           @relation("VoidedOrders")
+  pettyCashCreated PettyCash[]       @relation("CashierPettyCash")
+  pettyCashVerified PettyCash[]      @relation("VerifiedPettyCash")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model MenuItem {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  name        String
+  category    String      // mentai, kukus, goreng, minuman
+  price       Decimal     @db.Decimal(10, 2)
+  costPrice   Decimal     @db.Decimal(10, 2) // HPP pabrik
+  stock       Int         @default(0)
+  description String?
+  image       String?
+  isAvailable Boolean     @default(true)
+  isDeleted   Boolean     @default(false)    // Soft delete per Blueprint
+  orderItems  OrderItem[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Order {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique
+  outletId       String
+  outlet         Outlet        @relation(fields: [outletId], references: [id])
+  orderType      OrderType
+  tableNumber    String?
+  customerName   String?
+  subtotal       Decimal       @db.Decimal(12, 2)
+  discount       Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(12, 2)
+  hppTotal       Decimal       @db.Decimal(12, 2)
+  paymentMethod  PaymentMethod
+  cashReceived   Decimal?      @db.Decimal(12, 2)
+  changeAmount   Decimal?      @db.Decimal(12, 2)
+  cashierId      String
+  cashier        User          @relation("CashierOrders", fields: [cashierId], references: [id])
+  status         OrderStatus   @default(PAID)
+  voidReason     String?
+  voidedById     String?
+  voidedBy       User?         @relation("VoidedOrders", fields: [voidedById], references: [id])
+  items          OrderItem[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuId    String
+  menu      MenuItem @relation(fields: [menuId], references: [id])
+  name      String
+  price     Decimal  @db.Decimal(10, 2)
+  costPrice Decimal  @db.Decimal(10, 2)
+  quantity  Int
+  notes     String?
+}
+
+model ShiftSession {
+  id               String      @id @default(uuid())
+  shiftName        String
+  outletId         String
+  outlet           Outlet      @relation(fields: [outletId], references: [id])
+  cashierId        String
+  cashier          User        @relation(fields: [cashierId], references: [id])
+  terminalId       String      @default("POS-01")
+  startTime        DateTime    @default(now())
+  endTime          DateTime?
+  startingCash     Decimal     @db.Decimal(10, 2) // Modal awal laci
+  cashSales        Decimal     @default(0) @db.Decimal(12, 2)
+  qrisSales        Decimal     @default(0) @db.Decimal(12, 2)
+  pettyCashOut     Decimal     @default(0) @db.Decimal(10, 2)
+  expectedCash     Decimal     @db.Decimal(12, 2) // startingCash + cashSales - pettyCashOut
+  actualEndingCash Decimal?    @db.Decimal(12, 2)
+  difference       Decimal?    @db.Decimal(10, 2)
+  notes            String?
+  status           ShiftStatus @default(ACTIVE)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+}
+
+model PettyCash {
+  id              String            @id @default(uuid())
+  expenseNumber   String            @unique
+  outletId        String
+  outlet          Outlet            @relation(fields: [outletId], references: [id])
+  cashierId       String
+  cashier         User              @relation("CashierPettyCash", fields: [cashierId], references: [id])
+  amount          Decimal           @db.Decimal(10, 2)
+  category        PettyCashCategory
+  description     String
+  receiptImageUrl String?
+  status          PettyCashStatus   @default(MENUNGGU_VERIFIKASI)
+  verifiedById    String?
+  verifiedBy      User?             @relation("VerifiedPettyCash", fields: [verifiedById], references: [id])
+  verifiedAt      DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model FactoryInvoice {
+  id            String               @id @default(uuid())
+  invoiceNumber String               @unique
+  supplierName  String               @default("PT Dimsum Prima Rasa")
+  outletId      String
+  outlet        Outlet               @relation(fields: [outletId], references: [id])
+  issueDate     DateTime
+  dueDate       DateTime
+  totalAmount   Decimal              @db.Decimal(12, 2)
+  status        InvoiceStatus        @default(BELUM_LUNAS)
+  bankAccount   String
+  paidAt        DateTime?
+  proofImageUrl String?
+  items         FactoryInvoiceItem[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+}
+
+model FactoryInvoiceItem {
+  id        String         @id @default(uuid())
+  invoiceId String
+  invoice   FactoryInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  itemName  String
+  quantity  Int
+  unit      String         @default("Pouch")
+  unitCost  Decimal        @db.Decimal(10, 2)
+  total     Decimal        @db.Decimal(12, 2)
+}
+
+model FixedExpense {
+  id        String               @id @default(uuid())
+  code      String               @unique
+  title     String
+  category  FixedExpenseCategory
+  outletId  String?              // null = konsolidasi seluruh outlet
+  outlet    Outlet?              @relation(fields: [outletId], references: [id])
+  amount    Decimal              @db.Decimal(12, 2)
+  period    String
+  status    ExpenseStatus        @default(TERJADWAL)
+  dueDate   DateTime
+  autoDebet Boolean              @default(false)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+}
