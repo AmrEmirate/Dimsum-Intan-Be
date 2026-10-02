@@ -12,6 +12,7 @@ import * as pettyCashController from '../controllers/pettyCashController';
 import * as invoiceController from '../controllers/invoiceController';
 import * as expenseController from '../controllers/expenseController';
 import * as reportController from '../controllers/reportController';
+import { whatsappService } from '../services/whatsapp';
 
 export const apiRouter = Router();
 
@@ -28,6 +29,7 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
 // 2. Autentikasi
 apiRouter.post('/auth/login', authController.login);
 apiRouter.get('/auth/me', authenticateJwt, authController.getMe);
+apiRouter.put('/auth/pin', authenticateJwt, requireRole(['OWNER', 'SUPERVISOR']), authController.updatePin);
 
 // 3. Outlets
 apiRouter.get('/outlets', outletController.getOutlets);
@@ -87,4 +89,13 @@ apiRouter.delete('/fixed-expenses/:id', authenticateJwt, requireRole(['OWNER']),
 
 // 10. Laporan Laba Rugi & Arus Kas Konsolidasi
 apiRouter.get('/reports/profit-loss', authenticateJwt, reportController.getProfitLoss);
+
+// 11. WhatsApp Bot Status & QR
+apiRouter.get('/whatsapp/status', authenticateJwt, (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: whatsappService.getStatus(),
+  });
+});
+
 

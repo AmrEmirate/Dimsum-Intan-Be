@@ -17,6 +17,7 @@ export class WhatsAppService {
   private static instance: WhatsAppService;
   private client: Client | null = null;
   private isReady: boolean = false;
+  private latestQr: string | null = null;
 
   private constructor() {}
 
@@ -25,6 +26,14 @@ export class WhatsAppService {
       WhatsAppService.instance = new WhatsAppService();
     }
     return WhatsAppService.instance;
+  }
+
+  public getStatus(): { isReady: boolean; hasQr: boolean; qrCode: string | null } {
+    return {
+      isReady: this.isReady,
+      hasQr: Boolean(this.latestQr),
+      qrCode: this.latestQr,
+    };
   }
 
   public initialize(): void {
@@ -44,16 +53,20 @@ export class WhatsAppService {
       });
 
       this.client.on('qr', (qr: string) => {
+        this.latestQr = qr;
         console.log('[WhatsApp Bot] Pindai kode QR terminal ini untuk menghubungkan bot:');
         qrcode.generate(qr, { small: true });
       });
 
       this.client.on('ready', () => {
         this.isReady = true;
+        this.latestQr = null;
         console.log('[WhatsApp Bot] Bot WhatsApp Dimsum Intan siap digunakan!');
       });
 
       this.client.on('auth_failure', (msg: string) => {
+        this.isReady = false;
+        this.latestQr = null;
         console.error('[WhatsApp Bot] Otentikasi gagal:', msg);
       });
 

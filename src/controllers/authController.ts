@@ -103,3 +103,27 @@ export const getMe = async (req: AuthRequest, res: Response) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+export const updatePin = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Tidak terotentikasi' });
+    }
+
+    const { newPin } = req.body;
+    if (!newPin || String(newPin).length < 4) {
+      return res.status(400).json({ success: false, message: 'PIN minimal 4 digit angka!' });
+    }
+
+    const pinHash = await bcrypt.hash(String(newPin), 10);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { pinHash },
+    });
+
+    res.json({ success: true, message: 'PIN otorisasi berhasil diperbarui' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal mengubah PIN' });
+  }
+};
+
