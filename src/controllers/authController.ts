@@ -9,21 +9,19 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password } = req.body;
 
-    let user;
-    if (role && !username) {
-      // Shortcut login by role for dev / quick role-switching in UI
-      user = await prisma.user.findFirst({
-        where: { role },
-        include: { outlet: true },
-      });
-    } else {
-      user = await prisma.user.findUnique({
-        where: { username },
-        include: { outlet: true },
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username dan password wajib diisi',
       });
     }
+
+    const user = await prisma.user.findUnique({
+      where: { username },
+      include: { outlet: true },
+    });
 
     if (!user) {
       return res.status(401).json({
@@ -32,15 +30,12 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
-    // Check password if provided and not role-only shortcut
-    if (password) {
-      const isMatch = await bcrypt.compare(password, user.passwordHash);
-      if (!isMatch) {
-        return res.status(401).json({
-          success: false,
-          message: 'Password yang Anda masukkan salah',
-        });
-      }
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Password yang Anda masukkan salah',
+      });
     }
 
     const token = jwt.sign(

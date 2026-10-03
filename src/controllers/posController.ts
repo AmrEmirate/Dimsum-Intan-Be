@@ -83,16 +83,22 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ success: false, message: 'Keranjang belanja tidak boleh kosong' });
     }
 
-    const cashierId = req.user?.id || (await prisma.user.findFirst({ where: { role: 'KASIR' } }))?.id;
+    const cashierId = req.user?.id;
     if (!cashierId) {
-      return res.status(400).json({ success: false, message: 'Kasir tidak teridentifikasi' });
+      return res.status(401).json({ success: false, message: 'Kasir tidak teridentifikasi. Harap login kembali.' });
     }
 
     // Resolve outlet
     let targetOutletId = outletId;
     if (!targetOutletId || targetOutletId === 'all') {
+      targetOutletId = req.user?.outletId;
+    }
+    if (!targetOutletId) {
       const firstOutlet = await prisma.outlet.findFirst();
-      targetOutletId = firstOutlet ? firstOutlet.id : 'du';
+      targetOutletId = firstOutlet ? firstOutlet.id : undefined;
+    }
+    if (!targetOutletId) {
+      return res.status(400).json({ success: false, message: 'Outlet tidak valid' });
     }
 
     const outlet = await prisma.outlet.findUnique({ where: { id: targetOutletId } });
@@ -191,9 +197,15 @@ export const createOrder = async (req: AuthRequest, res: Response) => {
       return ord;
     });
 
-    // Send WhatsApp notification simulation
-    const waMsg = `*NOTA PENJUALAN DIMSUM INTAN*\nNo: ${createdOrder.invoiceNumber}\nTotal: Rp ${Number(total).toLocaleString('id-ID')}\nMetode: ${paymentMethod}\nStatus: LUNAS. Terima kasih!`;
-    whatsappService.sendNotification('081233445501', waMsg).catch(() => null);
+    // Send WhatsApp notification if customer phone or outlet notification phone is available
+    const notifPhone = req.body.customerPhone || process.env.WA_NOTIFICATION_PHONE || outlet?.phone;
+    if (notifPhone) {
+      const cleanPhone = notifPhone.replace(/[^0-9]/g, '');
+      if (cleanPhone) {
+        const waMsg = `*NOTA PENJUALAN DIMSUM INTAN*\nNo: ${createdOrder.invoiceNumber}\nOutlet: ${createdOrder.outlet?.name || 'Dimsum Intan'}\nTotal: Rp ${Number(total).toLocaleString('id-ID')}\nMetode: ${paymentMethod}\nStatus: LUNAS. Terima kasih!`;
+        whatsappService.sendNotification(cleanPhone, waMsg).catch(() => null);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -250,21 +262,17 @@ export const voidOrder = async (req: AuthRequest, res: Response) => {
     });
 
     let authorizedUser: any = null;
-    if (pin === '1234' || pin === '9999') {
-      authorizedUser = supervisors[0] || null;
-    } else {
-      for (const spv of supervisors) {
-        if (spv.pinHash) {
-          const isPinMatch = await bcrypt.compare(pin, spv.pinHash);
-          if (isPinMatch) {
-            authorizedUser = spv;
-            break;
-          }
+    for (const spv of supervisors) {
+      if (spv.pinHash) {
+        const isPinMatch = await bcrypt.compare(pin, spv.pinHash);
+        if (isPinMatch) {
+          authorizedUser = spv;
+          break;
         }
       }
     }
 
-    if (!authorizedUser && pin !== '1234' && pin !== '9999') {
+    if (!authorizedUser) {
       return res.status(403).json({ success: false, message: 'PIN Supervisor salah atau tidak memiliki wewenang!' });
     }
 

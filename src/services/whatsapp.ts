@@ -80,8 +80,8 @@ export class WhatsAppService {
 
   public async sendNotification(phone: string, message: string): Promise<boolean> {
     if (!this.client || !this.isReady) {
-      console.log(`[WhatsApp Mock Simulation] Mengirim pesan ke ${phone}:\n${message}`);
-      return true;
+      console.log(`[WhatsApp Offline/Standby] Layanan WhatsApp belum terhubung. Pesan ke ${phone} diabaikan.`);
+      return false;
     }
 
     try {

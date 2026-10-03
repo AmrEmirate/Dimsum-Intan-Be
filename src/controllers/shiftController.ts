@@ -60,13 +60,19 @@ export const openShift = async (req: AuthRequest, res: Response) => {
 
     let targetOutletId = outletId;
     if (!targetOutletId || targetOutletId === 'all') {
+      targetOutletId = req.user?.outletId;
+    }
+    if (!targetOutletId) {
       const firstOutlet = await prisma.outlet.findFirst();
-      targetOutletId = firstOutlet ? firstOutlet.id : 'du';
+      targetOutletId = firstOutlet ? firstOutlet.id : undefined;
+    }
+    if (!targetOutletId) {
+      return res.status(400).json({ success: false, message: 'Outlet tidak valid' });
     }
 
-    const cashierId = req.user?.id || (await prisma.user.findFirst({ where: { role: 'KASIR' } }))?.id;
+    const cashierId = req.user?.id;
     if (!cashierId) {
-      return res.status(400).json({ success: false, message: 'Kasir tidak teridentifikasi' });
+      return res.status(401).json({ success: false, message: 'Kasir tidak teridentifikasi. Harap login kembali.' });
     }
 
     // Check if there is already an active shift for this outlet

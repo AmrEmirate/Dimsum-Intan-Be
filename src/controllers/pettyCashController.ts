@@ -60,13 +60,19 @@ export const createPettyCash = async (req: AuthRequest, res: Response) => {
 
     let targetOutletId = outletId;
     if (!targetOutletId || targetOutletId === 'all') {
+      targetOutletId = req.user?.outletId;
+    }
+    if (!targetOutletId) {
       const firstOutlet = await prisma.outlet.findFirst();
-      targetOutletId = firstOutlet ? firstOutlet.id : 'du';
+      targetOutletId = firstOutlet ? firstOutlet.id : undefined;
+    }
+    if (!targetOutletId) {
+      return res.status(400).json({ success: false, message: 'Outlet tidak valid' });
     }
 
-    const cashierId = req.user?.id || (await prisma.user.findFirst({ where: { role: 'KASIR' } }))?.id;
+    const cashierId = req.user?.id;
     if (!cashierId) {
-      return res.status(400).json({ success: false, message: 'Kasir tidak teridentifikasi' });
+      return res.status(401).json({ success: false, message: 'Kasir tidak teridentifikasi. Harap login kembali.' });
     }
 
     const outlet = await prisma.outlet.findUnique({ where: { id: targetOutletId } });
@@ -274,13 +280,11 @@ export const deletePettyCash = async (req: AuthRequest, res: Response) => {
       where: { role: { in: ['OWNER', 'SUPERVISOR'] } },
     });
 
-    let authorized = pin === '1234' || pin === '9999';
-    if (!authorized) {
-      for (const spv of supervisors) {
-        if (spv.pinHash && (await bcrypt.compare(pin, spv.pinHash))) {
-          authorized = true;
-          break;
-        }
+    let authorized = false;
+    for (const spv of supervisors) {
+      if (spv.pinHash && (await bcrypt.compare(pin, spv.pinHash))) {
+        authorized = true;
+        break;
       }
     }
 
