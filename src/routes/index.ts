@@ -33,6 +33,9 @@ apiRouter.put('/auth/pin', authenticateJwt, requireRole(['OWNER', 'SUPERVISOR'])
 
 // 3. Outlets
 apiRouter.get('/outlets', outletController.getOutlets);
+apiRouter.post('/outlets', authenticateJwt, requireRole(['OWNER']), outletController.createOutlet);
+apiRouter.put('/outlets/:id', authenticateJwt, requireRole(['OWNER']), outletController.updateOutlet);
+apiRouter.delete('/outlets/:id', authenticateJwt, requireRole(['OWNER']), outletController.deleteOutlet);
 
 // 4. POS & Transaksi Penjualan
 apiRouter.get('/pos/orders', authenticateJwt, posController.getOrders);
