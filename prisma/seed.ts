@@ -4,10 +4,10 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Memulai proses reset dan seeding ulang database Dimsum Intan...');
+  console.log('🌱 Menjalankan pembersihan total database Dimsum Intan...');
 
-  // 1. Bersihkan SELURUH data tabel dari database
-  console.log('🧹 Membersihkan seluruh data database...');
+  // 1. Bersihkan SELURUH data tabel tanpa sisa
+  console.log('🧹 Menghapus semua data (transaksi, menu, shift, kas kecil, biaya, cabang & user)...');
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.shiftSession.deleteMany();
@@ -19,42 +19,8 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.outlet.deleteMany();
 
-  // 2. Buat Master Data 3 Outlet Dasar Dimsum Intan
-  console.log('🏢 Mendaftarkan master data 3 cabang outlet...');
-  await prisma.outlet.createMany({
-    data: [
-      {
-        id: 'out_du_01',
-        code: 'DU-01',
-        name: 'Cabang Dipatiukur',
-        city: 'Bandung',
-        address: 'Jl. Dipati Ukur No. 42, Coblong, Kota Bandung',
-        phone: '0812-2233-4455',
-        targetDailySales: 4000000,
-      },
-      {
-        id: 'out_ru_02',
-        code: 'RU-02',
-        name: 'Cabang R.E. Martadinata (Riau)',
-        city: 'Bandung',
-        address: 'Jl. L. L. R.E. Martadinata No. 88, Cihapit, Bandung Wetan',
-        phone: '0812-3344-5566',
-        targetDailySales: 5000000,
-      },
-      {
-        id: 'out_bb_03',
-        code: 'BB-03',
-        name: 'Cabang Buah Batu',
-        city: 'Bandung',
-        address: 'Jl. Buah Batu No. 154, Turangga, Lengkong, Bandung',
-        phone: '0812-4455-6677',
-        targetDailySales: 4500000,
-      },
-    ],
-  });
-
-  // 3. Buat SATU AKUN SAJA: Khusus Login Owner
-  console.log('👑 Membuat akun tunggal khusus Owner...');
+  // 2. Buat HANYA SATU akun login Owner / Admin saja (Database 100% bersih tanpa data cabang dummy)
+  console.log('👑 Mendaftarkan satu-satunya akun login Owner / Admin...');
   const ownerPasswordHash = await bcrypt.hash('owner123', 10);
   const ownerPinHash = await bcrypt.hash('9999', 10);
 
@@ -66,16 +32,18 @@ async function main() {
       passwordHash: ownerPasswordHash,
       pinHash: ownerPinHash,
       role: Role.OWNER,
+      outletId: null,
     },
   });
 
   console.log('====================================================');
-  console.log('✅ DATABASE BERHASIL DIRESET & DI-SEEDING!');
-  console.log('👑 Akun Login Tersedia (Hanya Owner):');
+  console.log('✅ DATABASE 100% BERSIH (KOSONG DARI DATA DUMMY)');
+  console.log('👑 Akun Tunggal Admin / Owner:');
   console.log(`   - Username : ${owner.username}`);
   console.log('   - Password : owner123');
   console.log('   - PIN Auth : 9999');
-  console.log('   - Role     : OWNER (Akses Penuh Seluruh Cabang & Modul)');
+  console.log('   - Role     : OWNER');
+  console.log('ℹ️  Seluruh cabang, menu & staf dapat diinput murni dari web app.');
   console.log('====================================================');
 }
 
