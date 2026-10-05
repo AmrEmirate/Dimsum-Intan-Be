@@ -26,10 +26,13 @@ apiRouter.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// 2. Autentikasi
+// 2. Autentikasi & Manajemen Pengguna
 apiRouter.post('/auth/login', authController.login);
 apiRouter.get('/auth/me', authenticateJwt, authController.getMe);
 apiRouter.put('/auth/pin', authenticateJwt, requireRole(['OWNER', 'SUPERVISOR']), authController.updatePin);
+apiRouter.get('/users', authenticateJwt, requireRole(['OWNER', 'SUPERVISOR']), authController.getUsers);
+apiRouter.post('/users', authenticateJwt, requireRole(['OWNER']), authController.createUser);
+apiRouter.delete('/users/:id', authenticateJwt, requireRole(['OWNER']), authController.deleteUser);
 
 // 3. Outlets
 apiRouter.get('/outlets', outletController.getOutlets);

@@ -122,3 +122,117 @@ export const updatePin = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const getUsers = async (_req: AuthRequest, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      include: { outlet: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const formatted = users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      role: u.role,
+      outletId: u.outletId,
+      outletName: u.outlet ? u.outlet.name : (u.role === 'OWNER' ? 'Seluruh Outlet (Pusat)' : 'Supervisor Area'),
+      createdAt: u.createdAt,
+    }));
+
+    res.json({ success: true, data: formatted });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal mengambil data pengguna' });
+  }
+};
+
+export const createUser = async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, username, password, role, outletId, pin } = req.body;
+
+    if (!name || !username || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nama, username, password, dan peran (role) wajib diisi!',
+      });
+    }
+
+    const cleanUsername = String(username).trim().toLowerCase();
+
+    const existing = await prisma.user.findUnique({
+      where: { username: cleanUsername },
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: `Username "${cleanUsername}" sudah digunakan!`,
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const pinHash = pin ? await bcrypt.hash(String(pin), 10) : null;
+
+    const newUser = await prisma.user.create({
+      data: {
+        name: String(name).trim(),
+        username: cleanUsername,
+        passwordHash,
+        pinHash,
+        role,
+        outletId: outletId || null,
+      },
+      include: { outlet: true },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Akun ${newUser.name} (${newUser.role}) berhasil didaftarkan!`,
+      data: {
+        id: newUser.id,
+        name: newUser.name,
+        username: newUser.username,
+        role: newUser.role,
+        outletId: newUser.outletId,
+        outletName: newUser.outlet ? newUser.outlet.name : (newUser.role === 'OWNER' ? 'Seluruh Outlet (Pusat)' : 'Supervisor Area'),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal menambahkan pengguna' });
+  }
+};
+
+export const deleteUser = async (req: AuthRequest, res: Response) => {
+  try {
+    const id = String(req.params.id);
+
+    if (req.user?.id === id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Anda tidak dapat menghapus akun Anda sendiri saat sedang login!',
+      });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Pengguna tidak ditemukan' });
+    }
+
+    if (user.role === 'OWNER') {
+      const ownerCount = await prisma.user.count({ where: { role: 'OWNER' } });
+      if (ownerCount <= 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Tidak dapat menghapus akun Owner utama terakhir!',
+        });
+      }
+    }
+
+    await prisma.user.delete({ where: { id } });
+
+    res.json({ success: true, message: 'Akun staf berhasil dihapus!' });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message || 'Gagal menghapus pengguna' });
+  }
+};
+
+
