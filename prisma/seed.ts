@@ -1,6 +1,5 @@
 import { PrismaClient, Role } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import process from 'process';
 
 const prisma = new PrismaClient();
 
@@ -51,7 +50,7 @@ async function main() {
 main()
   .catch((e) => {
     console.error('❌ Terjadi kesalahan saat seeding:', e);
-    process.exit(1);
+    throw e;
   })
   .finally(async () => {
     await prisma.$disconnect();
